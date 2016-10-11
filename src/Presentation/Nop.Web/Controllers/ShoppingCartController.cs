@@ -1264,15 +1264,7 @@ namespace Nop.Web.Controllers
                     case AttributeControlType.ReadonlyCheckboxes:
                         {
                             //load read-only (already server-side selected) values
-                            var attributeValues = _productAttributeService.GetProductAttributeValues(attribute.Id);
-                            foreach (var selectedAttributeId in attributeValues
-                                .Where(v => v.IsPreSelected)
-                                .Select(v => v.Id)
-                                .ToList())
-                            {
-                                attributesXml = _productAttributeParser.AddProductAttribute(attributesXml,
-                                    attribute, selectedAttributeId.ToString());
-                            }
+                            attributesXml = ParseReadonlyCheckboxAttributes(attribute, attributesXml);
                         }
                         break;
                     case AttributeControlType.TextBox:
@@ -1381,6 +1373,29 @@ namespace Nop.Web.Controllers
         }
 
         /// <summary>
+        /// Parse readonly checkbox product attributes
+        /// </summary>
+        /// <param name="productAttributeMapping">Product attribute mapping</param>
+        /// <param name="attributesXml">Attributes XML</param>
+        /// <returns>Parsed attributes</returns>
+        protected virtual string ParseReadonlyCheckboxAttributes(ProductAttributeMapping productAttributeMapping, string attributesXml)
+        {
+            if (productAttributeMapping.AttributeControlType != AttributeControlType.ReadonlyCheckboxes)
+                return attributesXml;
+
+            var attributeValues = _productAttributeService.GetProductAttributeValues(productAttributeMapping.Id);
+            foreach (var selectedAttributeId in attributeValues
+                .Where(v => v.IsPreSelected)
+                .Select(v => v.Id)
+                .ToList())
+            {
+                attributesXml = _productAttributeParser.AddProductAttribute(attributesXml,
+                    productAttributeMapping, selectedAttributeId.ToString());
+            }
+            return attributesXml;
+        }
+
+        /// <summary>
         /// Parse product rental dates on the product details page
         /// </summary>
         /// <param name="product">Product</param>
@@ -1479,7 +1494,7 @@ namespace Nop.Web.Controllers
                 });
             }
 
-            if (product.ProductAttributeMappings.Any())
+            if (product.ProductAttributeMappings.Any(pam => pam.AttributeControlType != AttributeControlType.ReadonlyCheckboxes))
             {
                 //product has some attributes. let a customer see them
                 return Json(new
@@ -1487,6 +1502,8 @@ namespace Nop.Web.Controllers
                     redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName() }),
                 });
             }
+
+            var attributesXml = product.ProductAttributeMappings.Aggregate(string.Empty, (current, pam) => ParseReadonlyCheckboxAttributes(pam, current));
 
             //get standard warnings without attribute validations
             //first, try to find existing shopping cart item
@@ -1517,6 +1534,7 @@ namespace Nop.Web.Controllers
                 product: product,
                 shoppingCartType: cartType,
                 storeId: _storeContext.CurrentStore.Id,
+                attributesXml: attributesXml,
                 quantity: quantity);
             if (addToCartWarnings.Any())
             {
